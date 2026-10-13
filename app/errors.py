@@ -7,3 +7,7 @@ class NavegadorCerradoError(RuntimeError):
 
 class LoginTimeoutError(TimeoutError):
     """Se agotó el tiempo máximo permitido para iniciar sesión."""
+
+
+class EjecucionCancelada(BaseException):
+    """Señal interna para cancelar desde el hilo dueño del navegador."""

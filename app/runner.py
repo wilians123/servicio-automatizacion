@@ -2,14 +2,34 @@
 
 import logging
 import re
+from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
 from app.config import Settings, get_settings
+from app.errors import NavegadorCerradoError
 from app.pausa import Pausador, pausar_para_usuario
 
 logger = logging.getLogger(__name__)
+_reporter_actual: ContextVar[Callable | None] = ContextVar("reporter_actual", default=None)
+_pausador_actual: ContextVar[Pausador | None] = ContextVar("pausador_actual", default=None)
+
+
+def reporter_context(reporter, pausador=None):
+    """Asocia el reporter al flujo actual sin cambiar las firmas de los pasos."""
+    return _reporter_actual.set(reporter), _pausador_actual.set(pausador)
+
+
+def restaurar_reporter(token) -> None:
+    reporter_token, pausador_token = token
+    _reporter_actual.reset(reporter_token)
+    _pausador_actual.reset(pausador_token)
+
+
+def _notificar(reporter, evento: str, **datos) -> None:
+    if reporter is not None:
+        reporter(evento, **datos)
 
 
 def paso(
@@ -19,11 +39,19 @@ def paso(
     *,
     settings: Settings | None = None,
     pausador: Pausador | None = None,
+    reporter=None,
 ) -> None:
+    reporter = reporter or _reporter_actual.get()
+    pausador = pausador or _pausador_actual.get()
+    if reporter is not None:
+        reporter("comprobar_cancelacion")
     try:
         logger.info("▶ %s", nombre)
+        _notificar(reporter, "paso_inicio", nombre=nombre)
         accion()
+        _notificar(reporter, "paso_ok", nombre=nombre)
     except Exception as error:
+        _notificar(reporter, "paso_fallo", nombre=nombre)
         if page.is_closed():
             raise
 
@@ -44,12 +72,17 @@ def paso(
                 raise
 
         try:
+            _notificar(reporter, "pausa_inicio", motivo=f'Falló el paso "{nombre}". Complétalo manualmente.')
             pausar_para_usuario(
                 page,
                 f'Falló el paso "{nombre}". Complétalo manualmente.',
                 pausador,
             )
-        except Exception:
+            _notificar(reporter, "pausa_fin", motivo=f'Falló el paso "{nombre}". Complétalo manualmente.')
+            _notificar(reporter, "paso_ok", nombre=nombre)
+        except Exception as pausa_error:
+            if reporter is not None and isinstance(pausa_error, NavegadorCerradoError):
+                raise
             if page.is_closed():
                 raise error
             raise

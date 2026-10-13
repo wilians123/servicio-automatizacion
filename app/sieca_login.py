@@ -1,10 +1,11 @@
 """Login SIECA portado literalmente desde el flujo TypeScript autorizado."""
 
 import re
+import threading
 import time
 
 from app.config import Settings
-from app.errors import LoginTimeoutError, NavegadorCerradoError
+from app.errors import EjecucionCancelada, LoginTimeoutError, NavegadorCerradoError
 from app.ui import mostrar_aviso, quitar_aviso
 
 TIEMPO_MAX_LOGIN_MS = 5 * 60 * 1000
@@ -51,7 +52,9 @@ def en_pagina_login(url: str) -> bool:
     return re.search(r"/Account/Login", url, flags=re.IGNORECASE) is not None
 
 
-def iniciar_sesion_sieca(page, settings: Settings) -> None:
+def iniciar_sesion_sieca(
+    page, settings: Settings, cancelar: threading.Event | None = None
+) -> None:
     page.goto(settings.sieca_login_url, wait_until="domcontentloaded")
     try:
         page.wait_for_load_state("load")
@@ -81,6 +84,8 @@ def iniciar_sesion_sieca(page, settings: Settings) -> None:
 
     try:
         while (time.monotonic() - inicio) * 1000 < TIEMPO_MAX_LOGIN_MS:
+            if cancelar is not None and cancelar.is_set():
+                raise EjecucionCancelada()
             if page.is_closed():
                 raise NavegadorCerradoError("El navegador fue cerrado por el usuario.")
             if not en_pagina_login(page.url):

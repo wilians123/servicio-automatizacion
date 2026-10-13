@@ -29,6 +29,7 @@ class Settings(BaseSettings):
         default=None, validation_alias="SIECA_USER_DATA_DIR"
     )
     debug_port: int = Field(default=9222, validation_alias="DEBUG_PORT")
+    automation_port: int = Field(default=8002, validation_alias="AUTOMATION_PORT")
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
 
     def model_post_init(self, __context: object) -> None:

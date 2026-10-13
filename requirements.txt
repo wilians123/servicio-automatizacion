@@ -2,3 +2,6 @@ playwright
 pydantic
 pydantic-settings
 python-dotenv
+fastapi
+uvicorn
+python-multipart
