@@ -4,3 +4,12 @@ data/
 **/__pycache__/
 _referencia_sieca/
 .pytest_cache/
+contrato/
+test_data/
+
+# Ignorar archivos de fases y reportes
+Fase1C.md
+Fase2.md
+global_context.md
+REPORTE_FASE_1C.md
+REPORTE_FASE_2.md

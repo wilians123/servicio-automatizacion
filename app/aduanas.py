@@ -8,6 +8,15 @@ from app.valores import normalizar
 _GENERICOS = {"ADUANA", "TERRESTRE"}
 
 
+def extraer_codigo_numerico_aduana(valor: str) -> str | None:
+    """Devuelve el código numérico del segmento central de una aduana."""
+    segmentos = re.split(r"\s*[-–—]\s*", valor.strip())
+    if len(segmentos) < 3:
+        return None
+    codigo = segmentos[1].strip()
+    return codigo if codigo.isdigit() else None
+
+
 def terminos_busqueda_aduana(valor: str) -> list[str]:
     segmentos = re.split(r"\s*[-–—]\s*", valor.strip())
     terminos: list[str] = []

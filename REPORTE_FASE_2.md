@@ -2,7 +2,9 @@
 
 ## 1. Resumen
 
-Se implementó la lectura tolerante del contrato congelado, el plan offline de campos pendientes y el flujo Playwright síncrono para crear una DUCA-T nueva y llenar los pasos 1 a 9. Al final se pausa para revisión; no se guarda ni envía la declaración. No se añadió ninguna dependencia.
+Se implementó la lectura tolerante del contrato congelado, el plan offline de campos pendientes y el flujo Playwright síncrono para crear una DUCA-T nueva y recorrer los pasos 1 a 10. Al final se pausa para revisión; no se guarda ni envía la declaración. No se añadió ninguna dependencia.
+
+En las pruebas manuales posteriores, el usuario completó en `embarque_1.json` los campos que faltaban y ejecutó la automatización con la configuración actual. El recorrido llegó hasta el paso 10 sin errores; el usuario reportó exitosas todas las pruebas realizadas. La declaración queda para revisión y no se guarda ni se envía automáticamente.
 
 Estado base antes de programar: **9 pruebas pasaron** (`python -m pytest -q`).
 
@@ -17,6 +19,9 @@ Estado base antes de programar: **9 pruebas pasaron** (`python -m pytest -q`).
 | `app/flujo.py` | Ejecutar la secuencia original y detenerse en la pausa de revisión manual. |
 | `scripts/ejecutar_embarque.py` | Ejecutar por contrato/archivos, o emitir el plan offline con `--plan-only`. |
 | `app/runner.py` | Evitar que el texto de una excepción pueda registrar valores del formulario: registra el paso y la clase del error. |
+| `app/pasos/comunes.py`, `app/pasos/paso1.py` | Corregir los argumentos `arg=` de `page.wait_for_function`, requeridos por la versión instalada de Playwright; completar el país de destino con la búsqueda Select2 `Salvador` → `El Salvador` y esperar los controles dependientes del paso 1. |
+| `app/pasos/paso6.py` | Limpiar la licencia del conductor antes de ingresarla: elimina espacios y caracteres especiales. Ejemplo: `02039206-1` → `020392061`. |
+| `app/pasos/paso7.py` | Procesar cada mercancía de la lista antes de llenar gastos; limpiar y limitar la partida a 10 dígitos, seleccionar la opción visible que coincide con su código, corregir las esperas entre campos, limitar el peso a dos decimales y aplicar valores predeterminados de gastos para cumplir las reglas del portal. |
 | `tests/test_valores.py`, `test_paises.py`, `test_aduanas.py`, `test_flujo_nulos.py`, ajuste a `test_runner.py` | Probar conversiones, mapeos, nulls, redacción de errores y los tres fixtures sin navegador. |
 | `REPORTE_FASE_2.md` | Registrar equivalencias, verificaciones, diferencias y validación manual. |
 
@@ -40,7 +45,7 @@ Estado base antes de programar: **9 pruebas pasaron** (`python -m pytest -q`).
 
 ### Selectores modificados
 
-**Ningún selector literal del original fue cambiado.** Los términos y opciones que antes eran valores fijos de embarque ahora salen del contrato o de las constantes autorizadas. La espera paralela de dos controles del Paso 1 se trasladó a `page.wait_for_function` con los mismos IDs, criterio de visibilidad y timeout de 30 segundos para conservar la concurrencia usando la API síncrona.
+**Ningún ID de selector del formulario fue cambiado.** Los términos y opciones que antes eran valores fijos de embarque ahora salen del contrato o de las constantes autorizadas. Se refinó la búsqueda de la partida arancelaria para esperar y seleccionar la única fila visible que contiene el código ingresado, en vez de seleccionar la primera fila sin comprobar su código. Las esperas de Playwright del paso 1 y el paso 7 pasan sus datos mediante `arg=`.
 
 ## 3. Comandos ejecutados y resultado
 
@@ -48,13 +53,16 @@ Estado base antes de programar: **9 pruebas pasaron** (`python -m pytest -q`).
 - Compilación sintáctica: `python -m compileall -q app scripts tests` → completada.
 - Suite final: `python -m pytest -q` → **20 pasaron**, sin navegador real.
 - Plan offline, sin Chrome ni login, ejecutado para los tres fixtures con `--plan-only` → los tres se cargaron y generaron su lista de campos pendientes.
+- Recorrido manual en SIECA reportado por el usuario, con los campos faltantes de `embarque_1.json` completados: se llegó al paso 10 sin errores. Todas las pruebas realizadas con la configuración actual fueron exitosas.
+- Tras los últimos cambios del paso 7, `python -m py_compile app/pasos/paso7.py` → compilación correcta. El usuario confirmó en la ejecución manual la configuración actual, incluido el avance hasta el paso 10.
 - El estado Git de este proyecto muestra los archivos de Fase 2 y conserva cambios previos del usuario. La inspección de `sieca-bot` fue solo lectura; su `.gitignore` modificado ya aparecía en una revisión anterior y no se tocó. No se ejecutó código de ese proyecto ni se modificaron `contrato/` o `test_data/`.
 
 ## 4. Estado de pruebas antes y después
 
 - Antes: 9/9 de Fase 1C pasaron.
-- Después: 20/20 pasaron. Incluyen números enteros/decimales, campos null, la regla de `OtrosGastos`, países, comparación de aduanas y lectura/plan de los tres fixtures.
-- La interacción de SIECA no se probó con navegador real.
+- La última suite automatizada registrada en Fase 2 fue 20/20. Incluye conversiones, campos null, países, comparación de aduanas y lectura/plan de los tres fixtures.
+- En la validación manual posterior, el usuario completó los datos faltantes de `embarque_1.json`; todos los casos ejecutados con la configuración actual fueron exitosos y la automatización llegó al paso 10.
+- La ejecución llegó hasta la etapa de revisión final. No se guardó ni envió la declaración.
 
 ## 5. Decisiones tomadas y desviaciones
 
@@ -63,17 +71,22 @@ Estado base antes de programar: **9 pruebas pasaron** (`python -m pytest -q`).
 - Los argumentos manuales usan `test_data/embarque_N`, que es la carpeta presente en este proyecto. El prompt describe `test-data/embarques/embarque_N`.
 - El planificador imprime nombres de campos y pasos, nunca valores del embarque. El runner omite el texto de excepciones en logs por la misma razón.
 - `cartaporte` vacío se omite. `ValorTotal`, `PaisProcedencia`, la identificación del exportador del JSON, el país de destino del JSON y los tipos fijos se manejan según las reglas de Fase 2.
-- No se llegó a SIECA, por lo que la presencia de las opciones exactas de aduanas/países y el comportamiento del segundo y siguientes elementos de mercancía quedan por validar manualmente.
+- El paso 7 recorre la lista completa de mercancías y solo empieza a escribir los gastos después de procesar la última. Para cada línea espera a que termine el indicador de carga antes de continuar.
+- La partida arancelaria conserva solo dígitos y limita la búsqueda a 10; espera una opción visible con ese código y la selecciona únicamente si hay una coincidencia.
+- El peso se redondea a dos decimales. Si `GastosTransporte` llega como `null`, vacío o cero, se escribe `0.01` porque SIECA exige un valor mayor que cero. `GastosSeguro` y `OtrosGastos` vacíos o `null` se escriben como `0`; sus valores informados se conservan. Esto evita pausar por esos dos campos.
+- La automatización completó una ejecución manual hasta el paso 10. La repetición de mercancías, el llenado de gastos y la navegación por los pasos posteriores funcionaron en las pruebas reportadas con la configuración actual.
 
 ### Campos previstos para pausa por fixture
 
 | Fixture | Campos que el plan offline prevé que requieran atención |
 | --- | --- |
-| `embarque_1` | Paso 5: `CodigoTransportista`, `PlacaTransporte`; paso 6: `LicenciaConductor`; paso 7: `GastosTransporte`, `GastosSeguro`, `OtrosGastos`; paso 8: `NumeroDocumentoManifiesto`; paso 9: `PlacaChasis`, `MarchamoSat`, `PaisChasis`. |
-| `embarque_2` | Paso 5: `CodigoTransportista`, `PlacaTransporte`; paso 6: `LicenciaConductor`; paso 8: `NombreDocumentoFactura` (archivo no encontrado con el nombre del JSON) y `NumeroDocumentoManifiesto`; paso 9: `PlacaChasis`, `MarchamoSat`, `PaisChasis`. `OtrosGastos` null se convierte en 0 porque transporte y seguro tienen valor. |
-| `embarque_3` | Paso 5: `CodigoTransportista`, `PlacaTransporte`; paso 6: `LicenciaConductor`; paso 7: `GastosTransporte`, `GastosSeguro`, `OtrosGastos`; paso 9: `PlacaChasis`, `PaisChasis`. |
+| `embarque_1` | El usuario completó los campos que faltaban antes de la ejecución manual. La configuración actual permitió llegar al paso 10 sin errores. Cuando transporte, seguro u otros llegan vacíos, se aplican los valores predeterminados descritos arriba. |
+| `embarque_2` | Paso 5: `CodigoTransportista`, `PlacaTransporte`; paso 6: `LicenciaConductor`; paso 8: `NombreDocumentoFactura` (archivo no encontrado con el nombre del JSON) y `NumeroDocumentoManifiesto`; paso 9: `PlacaChasis`, `MarchamoSat`, `PaisChasis`. Los gastos faltantes se resuelven según la regla de ejecución. |
+| `embarque_3` | Paso 5: `CodigoTransportista`, `PlacaTransporte`; paso 6: `LicenciaConductor`; paso 9: `PlacaChasis`, `PaisChasis`. Gastos vacíos se resuelven en ejecución: transporte `0.01`, seguro y otros `0`. |
 
 `ValorTotal` no genera pausa; lo calcula el portal. La lista vacía de `cartaporte` tampoco genera pausa.
+
+El planificador offline existente aún puede clasificar gastos vacíos como pausas, aunque el paso 7 ya los normaliza en ejecución (transporte `0.01`; seguro y otros `0`). Esta diferencia aplica al reporte `--plan-only`, no al llenado del formulario.
 
 ### Países y aduanas de los fixtures
 
@@ -87,9 +100,8 @@ Estado base antes de programar: **9 pruebas pasaron** (`python -m pytest -q`).
 
 ## 7. Riesgos y pendientes para Fase 2
 
-- **validación manual en SIECA: PENDIENTE (la hace el usuario)**. Requiere credenciales locales, captcha humano y comprobar que cada opción exacta exista en la sesión actual del portal.
-- Validar en SIECA que agregar varias mercancías repita el mismo bloque del primer elemento.
-- En la carga de documentos, verificar los tipos del JSON disponibles en el combo. Si falta uno, el wrapper pausará.
+- **Validación de la configuración actual en SIECA: EXITOSA según las pruebas reportadas por el usuario**. La automatización llegó al paso 10 sin errores.
+- Para ampliar cobertura, queda ejecutar los otros fixtures en SIECA y comprobar sus documentos y opciones particulares.
 - El flujo siempre termina antes de guardar o enviar la DUCA.
 
 ## 8. Cómo validar manualmente

@@ -34,7 +34,8 @@ def ejecutar(page, datos: dict, settings) -> None:
             )
         else:
             campo_licencia.click()
-            campo_licencia.fill(a_texto(licencia))
+            licencia_limpia = re.sub(r"[^0-9]", "", a_texto(licencia))
+            campo_licencia.fill(licencia_limpia)
         page.wait_for_timeout(500)
         page.locator("#btnBusquedaConductor").click()
 

@@ -1,5 +1,11 @@
 """Prueba manual de Chrome persistente y login SIECA."""
 
+import sys
+from pathlib import Path
+
+# Permite ejecutar el archivo directamente desde la raíz del proyecto.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from app.browser import abrir_contexto
 from app.config import get_settings
 from app.logging_config import configurar_logging

@@ -75,7 +75,7 @@ def esperar_selectores_paso1_listos(page) -> None:
           return estilo.display !== 'none' && estilo.visibility !== 'hidden' &&
             rect.width > 0 && rect.height > 0;
         })""",
-        selectores,
+        arg=selectores,
         timeout=30_000,
     )
     page.wait_for_function(
@@ -86,7 +86,7 @@ def esperar_selectores_paso1_listos(page) -> None:
           const control = contenedor.querySelector('input, select, button');
           return !control || !control.disabled;
         })""",
-        selectores,
+        arg=selectores,
         timeout=30_000,
     )
 
@@ -108,7 +108,7 @@ def esperar_select2_listo(page, selector: str, timeout: int = 30_000):
           if (/por favor espere/i.test(elemento.textContent ?? '')) return false;
           return true;
         }""",
-        selector,
+        arg=selector,
         timeout=timeout,
     )
     return contenedor
@@ -140,8 +140,18 @@ def seleccionar_pais_select2_directo(page, selector: str, pais: Pais) -> None:
 
 
 def seleccionar_aduana(page, selector: str, valor: str) -> bool:
-    contenedor = esperar_select2_listo(page, selector)
+    # Paso 1 ya espera el mensaje rojo de validación y su pausa de estabilización;
+    # abrir el control visible inmediatamente evita bloquear antes del clic por
+    # texto transitorio que puede permanecer en el contenedor Select2.
+    contenedor = page.locator(selector)
+    contenedor.wait_for(state="visible", timeout=30_000)
     terminos = terminos_busqueda_aduana(valor)
+    segmentos = re.split(r"\s*[-–—]\s*", valor.strip())
+    codigo = segmentos[1].strip() if len(segmentos) >= 3 else ""
+    # Para códigos alfabéticos (p. ej. ST), comienza por el nombre distintivo.
+    # Los códigos numéricos conservan prioridad para la aduana de destino.
+    if codigo and not codigo.isdigit():
+        terminos = [termino for termino in terminos if termino != codigo] + [codigo]
     contenedor.click()
     entrada = page.locator(".select2-drop:visible input.select2-input").last
     entrada.wait_for(state="visible", timeout=30_000)
@@ -150,18 +160,64 @@ def seleccionar_aduana(page, selector: str, valor: str) -> bool:
         entrada.fill("")
         entrada.press_sequentially(termino, delay=200)
         resultados = page.locator(".select2-results li:visible")
+        patron_termino = re.compile(
+            r"(?<!\w)" + re.escape(termino) + r"(?!\w)", re.IGNORECASE
+        )
         try:
-            resultados.first.wait_for(state="visible", timeout=30_000)
+            resultados.filter(has_text=patron_termino).first.wait_for(
+                state="visible", timeout=30_000
+            )
         except Exception:
             if indice_termino < len(terminos) - 1:
                 continue
             return False
         textos = resultados.all_text_contents()
         encontrado = indice_coincidencia_exacta(valor, textos)
+        if encontrado is None:
+            if codigo:
+                patron_codigo = re.compile(
+                    r"(?<!\w)" + re.escape(codigo) + r"(?!\w)", re.IGNORECASE
+                )
+                coincidencias = [
+                    indice
+                    for indice, texto in enumerate(textos)
+                    if patron_codigo.search(texto)
+                ]
+                if len(coincidencias) == 1:
+                    encontrado = coincidencias[0]
         if encontrado is not None:
             resultados.nth(encontrado).click()
             return True
     return False
+
+
+def seleccionar_aduana_por_codigo(page, selector: str, codigo: str) -> bool:
+    """Busca por el código numérico y elige una única opción que lo contenga."""
+    contenedor = esperar_select2_listo(page, selector)
+    contenedor.click()
+    entrada = page.locator(".select2-drop:visible input.select2-input").last
+    entrada.wait_for(state="visible", timeout=30_000)
+    expect(entrada).to_be_editable(timeout=30_000)
+    entrada.fill("")
+    entrada.press_sequentially(codigo, delay=200)
+    resultados = page.locator(".select2-results li:visible")
+    patron_codigo = re.compile(r"(?<!\d)" + re.escape(codigo) + r"(?!\d)")
+    try:
+        resultados.filter(has_text=patron_codigo).first.wait_for(
+            state="visible", timeout=30_000
+        )
+    except Exception:
+        return False
+
+    coincidencias = [
+        indice
+        for indice, texto in enumerate(resultados.all_text_contents())
+        if patron_codigo.search(texto)
+    ]
+    if len(coincidencias) != 1:
+        return False
+    resultados.nth(coincidencias[0]).click()
+    return True
 
 
 def seleccionar_combo_paso9(page, input_selector: str, lista_selector: str, texto: str) -> None:
