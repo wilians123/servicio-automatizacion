@@ -72,3 +72,15 @@ def test_navegador_cerrado_relanzando_error(tmp_path):
         paso(page, "paso", fallo_y_cierre, settings=settings_at(tmp_path), pausador=pausador)
     assert page.captures == []
     assert pausador.motivos == []
+
+
+def test_el_runner_no_registra_el_mensaje_de_error(tmp_path, caplog):
+    page = FakePage()
+    pausador = FakePausador()
+
+    def fallo_con_dato():
+        raise RuntimeError("dato-sensible-de-prueba")
+
+    paso(page, "Paso 2 - campo", fallo_con_dato, settings=settings_at(tmp_path), pausador=pausador)
+    assert "dato-sensible-de-prueba" not in caplog.text
+    assert "RuntimeError" in caplog.text

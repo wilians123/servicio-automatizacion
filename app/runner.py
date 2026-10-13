@@ -27,8 +27,9 @@ def paso(
         if page.is_closed():
             raise
 
-        mensaje = str(error).splitlines()[0] if str(error) else type(error).__name__
-        logger.exception("Falló el paso %s: %s", nombre, mensaje)
+        # No registrar texto de excepciones: algunos mensajes de validación pueden
+        # incluir valores del formulario que pertenecen al embarque.
+        logger.error("Falló el paso %s (%s)", nombre, type(error).__name__)
         config = settings or get_settings()
         carpeta = config.data_dir / "capturas"
         carpeta.mkdir(parents=True, exist_ok=True)
