@@ -1,15 +1,33 @@
 """Aplicación FastAPI de la automatización local."""
 
+from contextlib import asynccontextmanager
 import json
+import logging
 from typing import Annotated
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.config import get_settings
 from app.ejecucion import GestorEjecuciones
+from app.logging_config import configurar_logging
+from app.pdf_compresion import PDFNoComprimibleError, comprimir_si_es_necesario
 
-app = FastAPI(title="Servicio de automatización SIECA", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    settings = get_settings()
+    configurar_logging(settings.data_dir, settings.log_level)
+    logging.getLogger("uvicorn.access").disabled = True
+    yield
+
+
+app = FastAPI(
+    title="Servicio de automatización SIECA",
+    version="1.0.0",
+    lifespan=lifespan,
+)
 gestor = GestorEjecuciones()
 
 
@@ -18,7 +36,11 @@ def health():
     return {"estado": "operativo"}
 
 
-@app.post("/automation/start", status_code=202)
+@app.post(
+    "/automation/start",
+    status_code=202,
+    responses={413: {"description": "El PDF excede el límite y no se pudo comprimir."}},
+)
 async def start(
     datos: Annotated[str, Form()],
     archivos: Annotated[list[UploadFile] | None, File()] = None,
@@ -31,8 +53,25 @@ async def start(
         raise HTTPException(status_code=400, detail={"codigo": "DATOS_INVALIDOS_ERR", "mensaje": "datos debe ser un objeto JSON válido."})
     contenidos = []
     for archivo in archivos or []:
-        contenidos.append((archivo.filename or "archivo", await archivo.read()))
-        await archivo.close()
+        nombre = archivo.filename or "archivo"
+        try:
+            contenido = await archivo.read()
+        finally:
+            await archivo.close()
+        try:
+            contenido = comprimir_si_es_necesario(nombre, contenido)
+        except PDFNoComprimibleError as exc:
+            logging.getLogger(__name__).warning(
+                "No se pudo aceptar el archivo %s: %s", nombre, exc
+            )
+            raise HTTPException(
+                status_code=413,
+                detail={
+                    "codigo": "PDF_SIZE_LIMIT_ERR",
+                    "mensaje": f"{nombre}: {exc}",
+                },
+            ) from exc
+        contenidos.append((nombre, contenido))
     try:
         run_id = gestor.iniciar(objeto, contenidos)
     except RuntimeError:

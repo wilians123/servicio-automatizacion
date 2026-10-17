@@ -44,6 +44,9 @@
               }
             }
           },
+          "413": {
+            "description": "El PDF excede el límite y no se pudo comprimir."
+          },
           "422": {
             "description": "Validation Error",
             "content": {

@@ -3,6 +3,7 @@
 import logging
 from pathlib import Path
 
+from app.duca_numero import reportar_numero_duca
 from app.pasos.comunes import (
     adjuntar_archivo,
     campo,
@@ -85,13 +86,14 @@ def _documento(page, ruta_archivos: Path, numero: int, categoria: str, doc: dict
     fijo(page, nombre_paso, f"{carpeta}: guardar", guardar)
 
 
-def ejecutar(page, datos: dict, ruta_archivos: Path, settings) -> None:
+def ejecutar(page, datos: dict, ruta_archivos: Path, settings, reporter=None) -> None:
     fijo(
         page,
         "8",
         "Esperar administrador de archivos",
         lambda: page.locator("#fileManager").wait_for(state="visible", timeout=30_000),
     )
+    reportar_numero_duca(page, reporter)
     p8 = datos if isinstance(datos, dict) else {}
     for categoria, carpeta, campos, exact in (
         (

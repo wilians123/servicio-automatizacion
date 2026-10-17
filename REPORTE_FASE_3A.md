@@ -1,72 +1,85 @@
-# REPORTE_FASE_3A
+# Estado actual del repositorio
 
-## 1. Resumen
+**Proyecto:** `servicio-automatizacion`
 
-Se expuso el flujo de automatización existente mediante una API HTTP local en `127.0.0.1`, puerto configurable con `AUTOMATION_PORT` (por defecto 8002). Las ejecuciones viven en memoria, se serializan a una por vez y corren en un hilo dedicado. Se agregaron pausas recuperables, cancelación, eventos sin valores del embarque, pruebas sin navegador y la especificación OpenAPI.
+**Actualizado:** 17 de octubre de 2026
 
-La validación real contra SIECA queda **PENDIENTE**. No se inició el servidor ni se abrió Chrome en esta sesión.
+**Rama:** `fase-1c-automatizacion`
 
-## 2. Archivos creados/modificados y motivo
+**Commit base:** `711f3fb` (`Expose automation through local API`)
 
-- `app/config.py`, `.env.example`: configuración del puerto local.
-- `requirements.txt`, `requirements-dev.txt`: FastAPI, Uvicorn, multipart y httpx autorizados por la fase.
-- `app/api/`: aplicación y endpoints `/health`, `/automation/start`, `/automation/{id}`, `/automation/{id}/resume` y `/automation/{id}/cancel`.
-- `app/ejecucion.py`: gestor de ejecuciones en memoria, almacenamiento saneado de adjuntos, hilo de ejecución, pausas, reanudación y cancelación.
-- `app/runner.py`, `app/flujo.py`: reporte opcional de pasos y pausa final sin modificar las firmas de los módulos de pasos.
-- `app/sieca_login.py`, `app/errors.py`: señal de cancelación cooperativa durante el login; los selectores y el flujo de autenticación existentes se mantienen.
-- `scripts/servidor.py`: arranque limitado a loopback.
-- `scripts/exportar_openapi.py`, `automation.openapi.json`: exportador y contrato OpenAPI con cinco endpoints.
-- `tests/test_api.py`: cobertura API/gestor con navegador y flujo falsos.
-- `README.md`: sección de arranque y uso del API local.
+**Etiqueta local:** `fin-fase-3a-automatizacion` apunta al commit base.
 
-## 3. Comandos ejecutados y resultado
+## Resumen ejecutivo
 
-- `python -m pytest`: no pudo iniciar porque el intérprete global no tiene `pytest`.
-- `\.venv\Scripts\python.exe -m pytest`: no pudo iniciar; el entorno virtual apunta a una instalación de Python que no está disponible.
-- `python -m pip install -r requirements-dev.txt`: las dependencias aprobadas se instalaron para habilitar la verificación.
-- Suite completa con Python 3.12.14 y `pytest -p no:cacheprovider --basetemp=.pytest-tmp`: **26 passed**. Se usó el runtime disponible y los paquetes del proyecto porque `.venv` no inicia directamente.
-- `scripts/exportar_openapi.py`: completó; OpenAPI contiene cinco rutas.
-- `scripts/ejecutar_embarque.py --plan-only`: completó sin abrir Chrome.
-- No se inició `scripts/servidor.py`, no se llamó a SIECA y no se guardó ninguna DUCA.
+El repositorio contiene el servicio local que ejecuta el flujo de automatización SIECA y lo expone mediante FastAPI. El commit base ya está en la rama local y la rama aparece un commit por delante de `origin/fase-1c-automatizacion`. Además, hay cambios posteriores sin confirmar en configuración, API, automatización de países, login, compresión de PDF, documentación y pruebas.
 
-## 4. Estado de pruebas antes y después
+La revisión de estado del 17 de octubre no ejecutó pruebas ni validó el portal SIECA. El resultado de **26 pruebas aprobadas** descrito en la sección de verificaciones corresponde a la verificación registrada para el commit base; no cubre los cambios locales pendientes.
 
-- Antes: no fue posible obtener una línea base ejecutable porque el intérprete global no tenía `pytest` y el ejecutable de `.venv` refería a una instalación de Python ausente.
-- Después: **26 pruebas pasan**, incluidas las 20 existentes y seis pruebas nuevas de la API/gestor.
-- La validación manual con captcha y portal real no se ejecutó; queda **PENDIENTE**.
+## Qué contiene el proyecto
 
-## 5. Decisiones tomadas y desviaciones
+- **API local:** `app/api/main.py` expone salud, inicio de ejecuciones, consulta de estado, reanudación y cancelación. `main.py` permite arrancarla con Uvicorn. El gestor mantiene las ejecuciones en memoria y corre Playwright en un hilo dedicado.
+- **Flujo SIECA:** `app/flujo.py`, `app/ejecucion.py`, `app/runner.py`, `app/sieca_login.py` y `app/pasos/` gestionan la automatización, sus estados y las pausas para intervención humana.
+- **Configuración y secretos:** `.env` y `settings.json` son archivos locales ignorados. Los cambios pendientes hacen que `app/config.py` lea la contraseña desde la clave `PASSWORD` de `settings.json`; el usuario y las demás opciones siguen configurándose mediante el entorno y `.env`.
+- **Adjuntos:** `app/pdf_compresion.py` comprime PDF mayores de 999 KiB antes de procesarlos. Si no se pueden reducir bajo el límite, el API responde con HTTP 413. Otros tipos de archivo siguen su curso normal.
+- **Identificador de DUCA y estado:** `app/duca_numero.py` intenta leer el número de siete dígitos desde SIECA. El gestor lo expone junto con `mensajeEstado` en la consulta de ejecución.
+- **Países:** `app/paises.py` añade alias y las opciones literales usadas en los controles de SIECA para varios países.
+- **Contrato y dependencias:** `automation.openapi.json` documenta la API; `requirements.txt` incluye PyMuPDF para la compresión PDF.
+- **Documentación:** `README.md` describe configuración, arranque local y uso del servicio.
 
-- Se trabajó sobre la rama actual y no se creó otra, según la instrucción específica de `Fase3A.md`.
-- La cancelación durante el captcha se implementó como señal cooperativa revisada por el mismo hilo de Playwright; esto permite cerrar el contexto en el `finally` sin operar Playwright desde el hilo HTTP.
-- No se modificaron los módulos `app/pasos/**`, los fixtures ni el contrato.
-- Los registros contienen nombres de pasos y estados, nunca valores de los datos ni credenciales.
+## Estado de Git
 
-## 6. Hallazgos fuera de alcance
+### Commit confirmado
 
-- El entorno `.venv` local está ligado a una instalación de Python que no está disponible. No se recreó el entorno porque no forma parte de la implementación de la API.
-- La combinación instalada de Starlette/httpx emite una advertencia de deprecación desde `TestClient`; no afecta el resultado de las pruebas.
+`HEAD` está en `711f3fb`, con la etiqueta `fin-fase-3a-automatizacion`. Según `git status`, la rama local está **adelantada por un commit** respecto a `origin/fase-1c-automatizacion`.
 
-## 7. Riesgos y pendientes para la Fase 2
+### Cambios locales sin confirmar
 
-- **PENDIENTE:** iniciar el servicio local y validar `GET /health` manualmente.
-- **PENDIENTE:** probar un inicio real contra SIECA, completar el captcha, revisar la pausa final y confirmar el cierre del navegador al reanudar.
-- Un cierre manual del navegador durante una pausa recuperable devuelve `NAVEGADOR_CERRADO_ERR`; durante la pausa final cuenta como finalización, según lo especificado.
+Archivos modificados:
 
-## 8. Cómo validar manualmente
+- `.gitignore`, `README.md`, `automation.openapi.json`, `requirements.txt`
+- `app/api/main.py`, `app/config.py`, `app/ejecucion.py`, `app/flujo.py`, `app/paises.py`, `app/pasos/paso8.py`, `app/sieca_login.py`
+- `tests/conftest.py`, `tests/test_config.py`, `tests/test_paises.py`, `tests/test_sieca_login.py`
 
-En PowerShell, desde la raíz `servicio-automatizacion`, activa un entorno virtual funcional con los paquetes de `requirements-dev.txt` y arranca:
+Archivos nuevos aún sin seguimiento:
+
+- `.vscode/settings.json`
+- `main.py`
+- `app/duca_numero.py`, `app/pdf_compresion.py`
+- `tests/fixtures/settings.test.json` (contiene una contraseña ficticia de prueba)
+
+Estos cambios no forman parte del commit actual ni se incluirían en un push de `HEAD` hasta confirmarlos.
+
+### Archivos locales ignorados
+
+`.env`, `settings.json`, `.venv/`, `.venv-api/`, `data/`, `.pytest_cache/`, `repomix-output.xml` y `Fase3A.md` están ignorados por Git. `repomix-output.xml` es una salida generada; `Fase3A.md` era una nota de instrucciones de trabajo, no documentación de uso del producto.
+
+## Verificaciones y límites
+
+- Para el commit base se registraron **26 pruebas aprobadas**, la exportación de OpenAPI y la ejecución de `scripts/ejecutar_embarque.py --plan-only`.
+- En esta actualización no se volvieron a ejecutar pruebas ni se inició el servidor.
+- No se hizo validación real contra SIECA: captcha, carga de documentos, compresión de un PDF real y revisión final siguen pendientes.
+- La búsqueda de secretos realizada en la revisión no detectó credenciales evidentes en el commit base o los cambios visibles. Los archivos de credenciales locales están ignorados.
+- `git diff --check` no reportó errores de whitespace; Git mostró advertencias de conversión LF/CRLF en archivos modificados en Windows.
+
+## Próximos pasos
+
+1. Revisar y probar los cambios locales pendientes, especialmente la lectura de `settings.json`, la compresión PDF y el flujo de login.
+2. Confirmar los cambios que se quieran conservar; el push del commit base no los incluiría.
+3. Validar manualmente contra SIECA con intervención del operador antes de considerar terminada esa comprobación.
+
+## Arranque y comprobación local
+
+Desde PowerShell, con las dependencias instaladas:
 
 ```powershell
-python scripts/servidor.py
+python -m uvicorn main:app --host 127.0.0.1 --port 8002
 ```
 
-En otra ventana comprueba solo la salud del API:
+En otra terminal:
 
 ```powershell
 curl.exe http://127.0.0.1:8002/health
 ```
 
-La respuesta esperada es `{"estado":"operativo"}`. Esto confirma que la API está viva; no hace falta iniciar SIECA ni llamar a `/automation/start` para comprobarlo.
-
-Para una prueba operativa posterior, el README incluye un ejemplo de `curl.exe` para enviar el fixture y los adjuntos, consultar el estado y llamar a `resume`. Esa operación sí abre Chrome y puede requerir el captcha del operador.
+La respuesta esperada es `{"estado":"operativo"}`. Iniciar una ejecución mediante `/automation/start` abre el navegador y puede requerir que el operador complete el captcha.

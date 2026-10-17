@@ -20,6 +20,14 @@ class FakeLocator:
 
     def fill(self, value):
         self.page.fills.append((self.kind, value))
+        self.page.values[self.kind] = value
+
+    def evaluate(self, _script, value):
+        self.page.fills.append((self.kind, value))
+        self.page.values[self.kind] = value
+
+    def input_value(self):
+        return self.page.values.get(self.kind, "")
 
     def or_(self, other):
         return self
@@ -43,6 +51,7 @@ class FakePage:
         self.has_captcha = has_captcha
         self.closed = False
         self.fills = []
+        self.values = {}
         self.click_times = []
 
     def goto(self, url, wait_until):
@@ -80,6 +89,30 @@ def config():
 
 def install_clock(monkeypatch, clock):
     monkeypatch.setattr(sieca_login.time, "monotonic", clock.monotonic)
+
+
+def test_llenado_contrasena_completa_si_input_declara_maxlength():
+    class CampoConLongitudMaxima:
+        def __init__(self):
+            self.maxlength = 8
+            self.value = ""
+
+        def fill(self, value):
+            self.value = value[: self.maxlength] if self.maxlength is not None else value
+
+        def input_value(self):
+            return self.value
+
+        def evaluate(self, _script, value):
+            self.maxlength = None
+            self.value = value
+
+    campo = CampoConLongitudMaxima()
+    contrasena = "demo/123#tail"
+
+    sieca_login._llenar_contrasena_completa(campo, contrasena)
+
+    assert campo.value == contrasena
 
 
 def test_captcha_resuelto_pulsa_ingresar(monkeypatch):

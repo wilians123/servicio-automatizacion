@@ -52,6 +52,31 @@ def en_pagina_login(url: str) -> bool:
     return re.search(r"/Account/Login", url, flags=re.IGNORECASE) is not None
 
 
+def _llenar_contrasena_completa(campo, contrasena: str) -> None:
+    """Asigna y verifica la contraseña completa en el input de SIECA."""
+    campo.evaluate(
+        """(elemento, valor) => {
+            elemento.removeAttribute('maxlength');
+            const descriptor = Object.getOwnPropertyDescriptor(
+                HTMLInputElement.prototype, 'value'
+            );
+            if (descriptor && descriptor.set) {
+                descriptor.set.call(elemento, valor);
+            } else {
+                elemento.value = valor;
+            }
+            elemento.dispatchEvent(new Event('input', { bubbles: true }));
+            elemento.dispatchEvent(new Event('change', { bubbles: true }));
+        }""",
+        contrasena,
+    )
+    valor_ingresado = campo.input_value()
+    if valor_ingresado != contrasena:
+        raise RuntimeError(
+            "El campo de contraseña de SIECA no conservó la contraseña completa."
+        )
+
+
 def iniciar_sesion_sieca(
     page, settings: Settings, cancelar: threading.Event | None = None
 ) -> None:
@@ -66,7 +91,8 @@ def iniciar_sesion_sieca(
         return
 
     page.get_by_role("textbox", name="Usuario").fill(settings.sieca_user)
-    page.get_by_role("textbox", name="Contraseña").fill(settings.sieca_password)
+    campo_contrasena = page.get_by_role("textbox", name="Contraseña")
+    _llenar_contrasena_completa(campo_contrasena, settings.sieca_password)
     boton_ingresar = (
         page.get_by_role("button", name=re.compile("ingresar", re.IGNORECASE))
         .or_(page.get_by_role("link", name=re.compile(r"^\s*ingresar\s*$", re.IGNORECASE)))

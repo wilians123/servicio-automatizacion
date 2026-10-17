@@ -1,5 +1,7 @@
 .env
+/settings.json
 .venv/
+.venv-api/
 data/
 **/__pycache__/
 _referencia_sieca/
@@ -13,3 +15,7 @@ Fase2.md
 global_context.md
 REPORTE_FASE_1C.md
 REPORTE_FASE_2.md
+Fase3A.md
+
+# Salidas locales generadas
+/repomix-output.xml

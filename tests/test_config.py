@@ -2,14 +2,18 @@ from pathlib import Path
 
 import pytest
 
+import app.config as config_module
 from app.config import Settings, get_settings
 
 
-def test_faltan_credenciales_da_error_claro(monkeypatch, tmp_path):
+def test_falta_usuario_da_error_claro(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("SIECA_USER", raising=False)
     monkeypatch.delenv("SIECA_PASSWORD", raising=False)
-    with pytest.raises(ValueError, match="SIECA_USER.*SIECA_PASSWORD"):
+    settings_file = tmp_path / "settings.json"
+    settings_file.write_text('{"PASSWORD": "clave-de-prueba"}', encoding="utf-8")
+    monkeypatch.setattr(config_module, "SETTINGS_FILE", settings_file)
+    with pytest.raises(ValueError, match="SIECA_USER"):
         get_settings()
 
 
@@ -21,11 +25,18 @@ def test_rutas_por_defecto(monkeypatch, tmp_path):
     assert config.debug_port == 9222
 
 
-def test_variables_env_son_obligatorias_y_env_file_funciona(monkeypatch, tmp_path):
+def test_password_se_lee_de_settings_json_y_prioriza_sobre_entorno(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("SIECA_USER", "")
-    monkeypatch.setenv("SIECA_PASSWORD", "")
-    (tmp_path / ".env").write_text("SIECA_USER=\nSIECA_PASSWORD=\n", encoding="utf-8")
+    monkeypatch.setenv("SIECA_USER", "usuario-prueba")
+    monkeypatch.setenv("SIECA_PASSWORD", "valor-viejo")
+    settings_file = tmp_path / "settings.json"
+    settings_file.write_text('{"PASSWORD": "clave-json#prueba"}', encoding="utf-8")
+    monkeypatch.setattr(config_module, "SETTINGS_FILE", settings_file)
+    (tmp_path / ".env").write_text(
+        "SIECA_LOGIN_URL=https://example.invalid/login\nSIECA_PASSWORD=valor-env\n",
+        encoding="utf-8",
+    )
     config = get_settings()
-    assert config.sieca_user == ""
-    assert config.sieca_password == ""
+    assert config.sieca_user == "usuario-prueba"
+    assert config.sieca_password == "clave-json#prueba"
+    assert config.sieca_login_url == "https://example.invalid/login"

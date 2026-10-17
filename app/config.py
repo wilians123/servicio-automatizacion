@@ -1,5 +1,6 @@
 """Configuración de la automatización, cargada desde el entorno o `.env`."""
 
+import json
 from pathlib import Path
 
 from pydantic import Field
@@ -9,6 +10,7 @@ SIECA_LOGIN_URL_DEFAULT = (
     "https://www.duca.sieca.int/PortalCapturaDUCA/Account/Login"
     "?ReturnUrl=%2FPortalCapturaDUCA%2FInicio"
 )
+SETTINGS_FILE = Path(__file__).resolve().parents[1] / "settings.json"
 
 
 class Settings(BaseSettings):
@@ -38,12 +40,27 @@ class Settings(BaseSettings):
 
 
 def get_settings() -> Settings:
-    """Carga configuración y da un error directo cuando faltan credenciales."""
+    """Carga opciones de `.env` y la contraseña desde `settings.json`."""
     try:
-        return Settings()
+        datos = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            "No se pudo leer settings.json; debe contener la clave PASSWORD."
+        ) from exc
+
+    contrasena = datos.get("PASSWORD") if isinstance(datos, dict) else None
+    if not isinstance(contrasena, str) or not contrasena:
+        raise ValueError(
+            'settings.json debe contener una contraseña no vacía en la clave "PASSWORD".'
+        )
+
+    try:
+        # El argumento explícito tiene prioridad sobre SIECA_PASSWORD del entorno
+        # y del `.env`; la contraseña efectiva siempre proviene de settings.json.
+        return Settings(sieca_password=contrasena)
     except Exception as exc:
         text = str(exc)
-        missing = [name for name in ("SIECA_USER", "SIECA_PASSWORD") if name.lower() in text.lower()]
+        missing = [name for name in ("SIECA_USER",) if name.lower() in text.lower()]
         if missing:
             raise ValueError(
                 "Faltan variables obligatorias de configuración: "
@@ -53,6 +70,4 @@ def get_settings() -> Settings:
         raise
 
 
-# Validar al importar permite detectar una configuración incompleta al arrancar
-# cualquier entry point que importe `app.config`.
-settings = get_settings()
+# Los entry points cargan y validan la configuración al llamar get_settings().

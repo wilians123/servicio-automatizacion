@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import threading
 import uuid
@@ -14,6 +15,7 @@ from app.errors import EjecucionCancelada, NavegadorCerradoError
 from app.ui import mostrar_aviso, quitar_aviso
 
 MENSAJE_PAUSA_FINAL = "Revisa y guarda la DUCA manualmente"
+logger = logging.getLogger(__name__)
 
 
 class PausadorApi:
@@ -70,6 +72,33 @@ def _ahora() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _mensaje_estado(run: dict) -> str:
+    estado = run["estado"]
+    paso_actual = run.get("pasoActual")
+
+    if estado == "iniciando":
+        return "Iniciando automatización"
+    if estado == "esperando_captcha":
+        return "Esperando completar el captcha"
+    if estado == "en_ejecucion":
+        return paso_actual or "Preparando automatización"
+    if estado == "pausado":
+        return f"Intervención manual: {paso_actual}" if paso_actual else "Intervención manual requerida"
+    if estado == "revision_final":
+        return "Revisión final de la DUCA"
+    if estado == "finalizado":
+        return "Automatización finalizada"
+    if estado == "cancelado":
+        return "Automatización cancelada"
+    if estado == "error":
+        paso_fallido = next(
+            (paso["nombre"] for paso in reversed(run.get("pasos", [])) if paso["estado"] == "fallido"),
+            None,
+        )
+        return f"Falló el paso: {paso_fallido}" if paso_fallido else "Automatización fallida"
+    return estado
+
+
 def sanear_nombre_archivo(nombre: str) -> str:
     """Neutraliza rutas POSIX/Windows, unidades y caracteres de control."""
     base = nombre.replace("\\", "/").split("/")[-1]
@@ -89,6 +118,7 @@ class GestorEjecuciones:
         browser_factory: Callable | None = None,
         login_runner: Callable | None = None,
     ):
+        self._settings_overridden = settings is not None
         self.settings = settings or get_settings()
         self.flow_runner = flow_runner
         self.browser_factory = browser_factory
@@ -99,6 +129,8 @@ class GestorEjecuciones:
 
     def iniciar(self, datos: dict, archivos: list[tuple[str, bytes]] | None = None) -> str:
         with self._lock:
+            if not self._settings_overridden:
+                self.settings = get_settings()
             if self._active_id is not None:
                 actual = self._runs[self._active_id]
                 if actual["estado"] not in {"finalizado", "error", "cancelado"}:
@@ -114,6 +146,7 @@ class GestorEjecuciones:
                 "estado": "iniciando",
                 "pasoActual": None,
                 "pasos": [],
+                "numeroDuca": None,
                 "pausa": None,
                 "error": None,
                 "eventos": [],
@@ -140,9 +173,17 @@ class GestorEjecuciones:
 
     def _actualizar(self, run: dict, **cambios) -> None:
         with self._lock:
+            estado_anterior = run["estado"]
             for key, value in cambios.items():
                 run[key] = value
             self._evento(run, "info", f"Estado: {run['estado']}")
+            mensajes_terminales = {
+                "finalizado": "Ejecución finalizada",
+                "cancelado": "Ejecución cancelada",
+                "error": "Ejecución terminada con error",
+            }
+            if run["estado"] != estado_anterior and run["estado"] in mensajes_terminales:
+                logger.info("%s (id=%s)", mensajes_terminales[run["estado"]], run["id"])
 
     def _reporter(self, run: dict, evento: str, **datos) -> None:
         if run["cancelar"].is_set():
@@ -164,6 +205,10 @@ class GestorEjecuciones:
                 self._evento(run, "info", "Ejecución pausada para intervención manual")
             elif evento == "pausa_fin":
                 self._evento(run, "info", "Intervención manual completada")
+            elif evento == "numero_duca":
+                numero = datos.get("numero")
+                if isinstance(numero, str) and numero.isdigit() and len(numero) == 7:
+                    run["numeroDuca"] = numero
 
     def _ejecutar(self, run: dict) -> None:
         contexto = None
@@ -229,7 +274,13 @@ class GestorEjecuciones:
             run = self._runs.get(run_id)
             if run is None:
                 return None
-            return {key: run[key] for key in ("id", "estado", "pasoActual", "pasos", "pausa", "error", "eventos", "inicio", "fin")}
+            resultado = {
+                key: run[key]
+                for key in ("id", "estado", "pasoActual", "pasos", "pausa", "error", "eventos", "inicio", "fin")
+            }
+            resultado["numeroDuca"] = run["numeroDuca"]
+            resultado["mensajeEstado"] = _mensaje_estado(run)
+            return resultado
 
     def reanudar(self, run_id: str) -> bool | None:
         with self._lock:
