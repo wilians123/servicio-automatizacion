@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import shutil
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -15,6 +16,7 @@ from app.errors import EjecucionCancelada, NavegadorCerradoError
 from app.ui import mostrar_aviso, quitar_aviso
 
 MENSAJE_PAUSA_FINAL = "Revisa y guarda la DUCA manualmente"
+MAX_EJECUCIONES_GUARDADAS = 10
 logger = logging.getLogger(__name__)
 
 
@@ -127,6 +129,30 @@ class GestorEjecuciones:
         self._runs: dict[str, dict] = {}
         self._active_id: str | None = None
 
+    def _limpiar_ejecuciones_antiguas(self, raiz_actual: Path) -> None:
+        """Conserva la ejecución recién creada y las nueve carpetas más recientes."""
+        raiz_ejecuciones = raiz_actual.parent
+        carpetas = [
+            ruta
+            for ruta in raiz_ejecuciones.iterdir()
+            if ruta.is_dir()
+        ]
+        if len(carpetas) <= MAX_EJECUCIONES_GUARDADAS:
+            return
+
+        # La carpeta raíz se modifica al crearla y al crear "archivos", pero no
+        # cuando cambian archivos dentro de esa subcarpeta, así que su mtime
+        # conserva el orden de inicio de las ejecuciones.
+        antiguas = sorted(
+            (ruta for ruta in carpetas if ruta != raiz_actual),
+            key=lambda ruta: (ruta.stat().st_mtime_ns, ruta.name),
+        )
+        cantidad_eliminar = len(carpetas) - MAX_EJECUCIONES_GUARDADAS
+        for ruta in antiguas[:cantidad_eliminar]:
+            shutil.rmtree(ruta)
+            self._runs.pop(ruta.name, None)
+            logger.info("Ejecución antigua eliminada por retención (id=%s)", ruta.name)
+
     def iniciar(self, datos: dict, archivos: list[tuple[str, bytes]] | None = None) -> str:
         with self._lock:
             if not self._settings_overridden:
@@ -141,6 +167,7 @@ class GestorEjecuciones:
             carpeta.mkdir(parents=True, exist_ok=True)
             for nombre, contenido in archivos or []:
                 (carpeta / sanear_nombre_archivo(nombre)).write_bytes(contenido)
+            self._limpiar_ejecuciones_antiguas(raiz)
             run = {
                 "id": run_id,
                 "estado": "iniciando",

@@ -54,6 +54,8 @@ También está disponible `python scripts/servidor.py`, que toma el puerto de `A
 
 Al recibir archivos por `/automation/start`, los PDF mayores de 999 KiB se comprimen con PyMuPDF antes de guardarse; el nombre se conserva. Los demás formatos y los PDF que ya cumplen el límite se guardan sin cambios. Si un PDF protegido, firmado o que no se puede reducir sigue sin cumplir el límite, la API responde `413` y no inicia la ejecución. Instala PyMuPDF junto con las dependencias del proyecto con `python -m pip install -r requirements.txt`.
 
+Los archivos de cada trámite se guardan en `DATA_DIR/ejecuciones/<id>/archivos`. Se conservan como máximo las 10 ejecuciones más recientes; al iniciar una nueva que exceda ese límite, se elimina la carpeta de la ejecución más antigua.
+
 En otra ventana de PowerShell, comprueba el estado y envía el fixture con los archivos de ejemplo:
 
 ```powershell
